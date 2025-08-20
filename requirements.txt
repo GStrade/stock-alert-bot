@@ -1,3 +1,0 @@
-yfinance
-python-telegram-bot
-matplotlib
