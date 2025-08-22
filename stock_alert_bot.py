@@ -16,8 +16,8 @@ def get_sector(ticker):
 
 def generate_chart(ticker):
     stock = yf.Ticker(ticker)
-    hist = stock.history(period="7d")
-    plt.figure()
+    hist = stock.history(period="6mo")
+    plt.figure(figsize=(8,4))
     hist['Close'].plot(title=f"{ticker} - גרף יומי")
     filepath = f"{ticker}.png"
     plt.savefig(filepath)
@@ -26,34 +26,70 @@ def generate_chart(ticker):
 
 def send_stocks():
     tickers = ['NIO', 'BITF', 'COMP', 'AMC', 'ADT', 'SMWB']
-    msgs = []
+    results = []  # רשימה לאגירת המניות שנבחרו
 
     for t in tickers:
         try:
             stock = yf.Ticker(t)
             info = stock.info
-            price = stock.history(period="1d")['Close'][0]
+            hist = stock.history(period="1d")
+            price = hist['Close'][0] if not hist.empty else None
             volume = info.get('volume', 0)
             avg_volume = info.get('averageVolume', 1)
             change = info.get('regularMarketChangePercent', 0)
             sector = get_sector(t)
 
             reasons = []
-            if change > 5:
+            if change and change > 5:
                 reasons.append("📈 שינוי יומי חד")
-            if volume > 2 * avg_volume:
+            if volume and avg_volume and volume > 2 * avg_volume:
                 reasons.append("🔥 ווליום חריג")
             if info.get('newsHeadline', ''):
                 reasons.append("📰 חדשות חמות")
 
-            if len(reasons) >= 2:
+            # שולחים רק אם יש לפחות 2 סיבות
+            if len(reasons) >= 2 and price:
                 summary = info.get('longBusinessSummary', '')[:100]
                 direction = "לונג" if change > 0 else "שורט"
                 potential = round(abs(change), 2)
-                chart_path = generate_chart(t)
-                caption = f"*{info.get('shortName', t)}* ({t})\nתחום: {sector}\nסיבה: {', '.join(reasons)}\nכיוון: {direction}\nאחוז רווח פוטנציאלי: {potential}%\n{summary}..."
-                bot.send_photo(chat_id=CHAT_ID, photo=open(chart_path, 'rb'), caption=caption, parse_mode='Markdown')
+                results.append({
+                    "symbol": t,
+                    "name": info.get('shortName', t),
+                    "sector": sector,
+                    "price": price,
+                    "reasons": reasons,
+                    "direction": direction,
+                    "potential": potential,
+                    "summary": summary
+                })
         except Exception as e:
             print(f"שגיאה עם {t}: {e}")
+
+    # מגבילים ל-5 מניות
+    results = results[:5]
+
+    if not results:
+        bot.send_message(chat_id=CHAT_ID, text="לא נמצאו מניות מתאימות היום.")
+        return
+
+    # בונים הודעה מסודרת
+    message = "📊 *עדכון מניות יומי*\n\n"
+    for r in results:
+        message += f"*{r['name']}* ({r['symbol']})\n"
+        message += f"תחום: {r['sector']}\n"
+        message += f"מחיר: ${r['price']:.2f}\n"
+        message += f"סיבה: {', '.join(r['reasons'])}\n"
+        message += f"כיוון: {r['direction']}\n"
+        message += f"אחוז רווח פוטנציאלי: {r['potential']}%\n"
+        message += f"{r['summary']}...\n\n"
+
+    # שליחת ההודעה
+    bot.send_message(chat_id=CHAT_ID, text=message, parse_mode="Markdown")
+
+    # שליחת גרפים לכל מניה
+    for r in results:
+        chart_path = generate_chart(r['symbol'])
+        caption = f"{r['symbol']} – גרף יומי"
+        bot.send_photo(chat_id=CHAT_ID, photo=open(chart_path, 'rb'), caption=caption)
 
 send_stocks()
