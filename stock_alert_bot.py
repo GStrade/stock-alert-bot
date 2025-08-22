@@ -25,6 +25,9 @@ def generate_chart(ticker):
     return filepath
 
 def send_stocks():
+    # 🔔 הודעת בדיקה בתחילת ההרצה
+    bot.send_message(chat_id=CHAT_ID, text="🔔 הבוט הופעל בהצלחה, מתחיל סריקה...")
+
     tickers = ['NIO', 'BITF', 'COMP', 'AMC', 'ADT', 'SMWB']
     results = []
 
@@ -50,10 +53,10 @@ def send_stocks():
             if len(reasons) >= 2 and price:
                 direction = "לונג" if change > 0 else "שורט"
                 potential = round(abs(change), 2)
-                entry = round(price * 0.98, 2)  # דוגמה לכניסה
-                stop = round(price * 0.90, 2)   # דוגמה לסטופ
-                tp1 = round(price * 1.15, 2)    # יעד ראשון
-                tp2 = round(price * 1.30, 2)    # יעד שני
+                entry = round(price * 0.98, 2)
+                stop = round(price * 0.90, 2)
+                tp1 = round(price * 1.15, 2)
+                tp2 = round(price * 1.30, 2)
 
                 results.append({
                     "symbol": t,
@@ -77,7 +80,7 @@ def send_stocks():
         bot.send_message(chat_id=CHAT_ID, text="לא נמצאו מניות מתאימות היום.")
         return
 
-    # הודעה מסודרת כמו בדוגמה שלך
+    # הודעה מסודרת
     message = "📊 *עדכון מניות יומי*\n\n"
     for r in results:
         message += f"**{r['name']} ({r['symbol']})** — {r['sector']}\n"
@@ -93,9 +96,12 @@ def send_stocks():
 
     bot.send_message(chat_id=CHAT_ID, text=message, parse_mode="Markdown")
 
-    # שולח גרפים לכל מניה
+    # גרפים לכל מניה
     for r in results:
         chart_path = generate_chart(r['symbol'])
         bot.send_photo(chat_id=CHAT_ID, photo=open(chart_path, 'rb'), caption=f"{r['symbol']} – גרף יומי")
+
+    # ✅ הודעת סיום בדיקה
+    bot.send_message(chat_id=CHAT_ID, text="✅ הבוט סיים סריקה")
 
 send_stocks()
