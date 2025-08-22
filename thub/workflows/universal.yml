@@ -4,9 +4,13 @@ on:
   workflow_dispatch:
     inputs:
       script:
-        description: 'בחר איזה קובץ להריץ (למשל: stock_alert_bot.py / crypto_alert_bot.py / test_stocks_bot.py)'
+        description: 'בחר איזה קובץ להריץ (למשל: stocks_bot.py / crypto_bot.py / test_stocks_bot.py)'
         required: true
-        default: 'stock_alert_bot.py'
+        default: 'stocks_bot.py'
+
+  schedule:
+    - cron: "0 6 * * *"   # כל יום ב-06:00 UTC (09:00 שעון ישראל)
+    - cron: "0 14 * * *"  # כל יום ב-14:00 UTC (17:00 שעון ישראל)
 
 jobs:
   run-bot:
@@ -26,7 +30,23 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run selected bot/test
+      - name: Run stocks bot (scheduled)
+        if: github.event_name == 'schedule'
+        env:
+          TOKEN_STOCKS: ${{ secrets.TOKEN_STOCKS }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
+        run: python stocks_bot.py
+
+      - name: Run crypto bot (scheduled)
+        if: github.event_name == 'schedule'
+        env:
+          TOKEN_CRYPTO: ${{ secrets.TOKEN_CRYPTO }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
+          LUNARCRUSH_API: ${{ secrets.LUNARCRUSH_API }}
+        run: python crypto_bot.py
+
+      - name: Run selected script (manual)
+        if: github.event_name == 'workflow_dispatch'
         env:
           TOKEN_STOCKS: ${{ secrets.TOKEN_STOCKS }}
           TOKEN_CRYPTO: ${{ secrets.TOKEN_CRYPTO }}
