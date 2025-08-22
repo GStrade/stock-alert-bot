@@ -1,107 +1,73 @@
 import os
+import requests
 import yfinance as yf
-import matplotlib.pyplot as plt
 from telegram import Bot
+from datetime import datetime
 
-TOKEN = os.environ.get("BOT_TOKEN")
-CHAT_ID = os.environ.get("CHAT_ID")
+# קריאת משתנים סודיים מ-GitHub Secrets
+TOKEN = os.getenv("TOKEN_STOCKS")
+CHAT_ID = os.getenv("CHAT_ID")
+
 bot = Bot(token=TOKEN)
 
-def get_sector(ticker):
-    try:
-        info = yf.Ticker(ticker).info
-        return info.get("sector", "לא ידוע")
-    except:
-        return "שגיאה"
+# רשימת מניות לדוגמה (ניתן להרחיב)
+CANDIDATES = ["PGEN", "PLTR", "SOFI", "BBBYQ", "NIO", "AMC"]
 
-def generate_chart(ticker):
+def get_stock_data(ticker):
     stock = yf.Ticker(ticker)
-    hist = stock.history(period="6mo")
-    plt.figure(figsize=(8,4))
-    hist['Close'].plot(title=f"{ticker} - גרף יומי")
-    filepath = f"{ticker}.png"
-    plt.savefig(filepath)
-    plt.close()
-    return filepath
+    data = stock.history(period="5d")
+    if data.empty:
+        return None
 
-def send_stocks():
-    # 🔔 הודעת בדיקה בתחילת ההרצה
-    bot.send_message(chat_id=CHAT_ID, text="🔔 הבוט הופעל בהצלחה, מתחיל סריקה...")
+    last = data.iloc[-1]
+    prev = data.iloc[-2] if len(data) > 1 else last
 
-    tickers = ['NIO', 'BITF', 'COMP', 'AMC', 'ADT', 'SMWB']
+    price = round(last["Close"], 2)
+    change = round(((last["Close"] - prev["Close"]) / prev["Close"]) * 100, 2)
+
+    info = stock.info
+    sector = info.get("sector", "N/A")
+    name = info.get("shortName", ticker)
+
+    return {
+        "ticker": ticker,
+        "name": name,
+        "price": price,
+        "change": change,
+        "sector": sector
+    }
+
+def filter_stocks():
     results = []
+    for ticker in CANDIDATES:
+        data = get_stock_data(ticker)
+        if not data:
+            continue
+        # קריטריונים: מחיר בין 1 ל-20 דולר, שינוי יומי מעל 5%
+        if 1 <= data["price"] <= 20 and abs(data["change"]) >= 5:
+            results.append(data)
+    return results[:5]  # עד 5 מניות
 
-    for t in tickers:
-        try:
-            stock = yf.Ticker(t)
-            info = stock.info
-            hist = stock.history(period="1d")
-            price = hist['Close'][0] if not hist.empty else None
-            volume = info.get('volume', 0)
-            avg_volume = info.get('averageVolume', 1)
-            change = info.get('regularMarketChangePercent', 0)
-            sector = get_sector(t)
+def format_message(stocks):
+    if not stocks:
+        return "לא נמצאו מניות מתאימות להיום."
 
-            reasons = []
-            if change and change > 5:
-                reasons.append("📈 שינוי יומי חד")
-            if volume and avg_volume and volume > 2 * avg_volume:
-                reasons.append("🔥 ווליום חריג")
-            if info.get('newsHeadline', ''):
-                reasons.append("📰 חדשות חמות")
+    msg = "📊 *רשימת מניות חמות להיום:*\n\n"
+    for s in stocks:
+        direction = "🟢 לונג" if s["change"] > 0 else "🔴 שורט"
+        msg += (
+            f"*{s['ticker']}* ({s['name']})\n"
+            f"מחיר: ${s['price']} | שינוי: {s['change']}%\n"
+            f"סקטור: {s['sector']}\n"
+            f"כיוון: {direction}\n"
+            f"---\n"
+        )
+    return msg
 
-            if len(reasons) >= 2 and price:
-                direction = "לונג" if change > 0 else "שורט"
-                potential = round(abs(change), 2)
-                entry = round(price * 0.98, 2)
-                stop = round(price * 0.90, 2)
-                tp1 = round(price * 1.15, 2)
-                tp2 = round(price * 1.30, 2)
+def main():
+    stocks = filter_stocks()
+    text = format_message(stocks)
+    bot.send_message(chat_id=CHAT_ID, text=text, parse_mode="Markdown")
 
-                results.append({
-                    "symbol": t,
-                    "name": info.get('shortName', t),
-                    "sector": sector,
-                    "price": price,
-                    "reasons": reasons,
-                    "direction": direction,
-                    "potential": potential,
-                    "entry": entry,
-                    "stop": stop,
-                    "tp1": tp1,
-                    "tp2": tp2
-                })
-        except Exception as e:
-            print(f"שגיאה עם {t}: {e}")
-
-    results = results[:5]
-
-    if not results:
-        bot.send_message(chat_id=CHAT_ID, text="לא נמצאו מניות מתאימות היום.")
-        return
-
-    # הודעה מסודרת
-    message = "📊 *עדכון מניות יומי*\n\n"
-    for r in results:
-        message += f"**{r['name']} ({r['symbol']})** — {r['sector']}\n"
-        message += f"מחיר נוכחי: ${r['price']:.2f}\n"
-        message += f"כיוון: {r['direction']}\n"
-        message += f"סיבה: {', '.join(r['reasons'])}\n"
-        message += f"כניסה: ${r['entry']} (הדרגתי)\n"
-        message += f"סטופ: ${r['stop']}\n"
-        message += f"יעדים: TP1 ${r['tp1']} (+15%) | TP2 ${r['tp2']} (+30%)\n"
-        message += f"הערכת סיכוי: ~{r['potential']}%\n\n"
-
-    message += "*הערה*: לא ייעוץ השקעות. לשיקולך בלבד."
-
-    bot.send_message(chat_id=CHAT_ID, text=message, parse_mode="Markdown")
-
-    # גרפים לכל מניה
-    for r in results:
-        chart_path = generate_chart(r['symbol'])
-        bot.send_photo(chat_id=CHAT_ID, photo=open(chart_path, 'rb'), caption=f"{r['symbol']} – גרף יומי")
-
-    # ✅ הודעת סיום בדיקה
-    bot.send_message(chat_id=CHAT_ID, text="✅ הבוט סיים סריקה")
-
-send_stocks()
+if __name__ == "__main__":
+    main()
