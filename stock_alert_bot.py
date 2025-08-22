@@ -26,7 +26,7 @@ def generate_chart(ticker):
 
 def send_stocks():
     tickers = ['NIO', 'BITF', 'COMP', 'AMC', 'ADT', 'SMWB']
-    results = []  # רשימה לאגירת המניות שנבחרו
+    results = []
 
     for t in tickers:
         try:
@@ -47,11 +47,14 @@ def send_stocks():
             if info.get('newsHeadline', ''):
                 reasons.append("📰 חדשות חמות")
 
-            # שולחים רק אם יש לפחות 2 סיבות
             if len(reasons) >= 2 and price:
-                summary = info.get('longBusinessSummary', '')[:100]
                 direction = "לונג" if change > 0 else "שורט"
                 potential = round(abs(change), 2)
+                entry = round(price * 0.98, 2)  # דוגמה לכניסה
+                stop = round(price * 0.90, 2)   # דוגמה לסטופ
+                tp1 = round(price * 1.15, 2)    # יעד ראשון
+                tp2 = round(price * 1.30, 2)    # יעד שני
+
                 results.append({
                     "symbol": t,
                     "name": info.get('shortName', t),
@@ -60,36 +63,39 @@ def send_stocks():
                     "reasons": reasons,
                     "direction": direction,
                     "potential": potential,
-                    "summary": summary
+                    "entry": entry,
+                    "stop": stop,
+                    "tp1": tp1,
+                    "tp2": tp2
                 })
         except Exception as e:
             print(f"שגיאה עם {t}: {e}")
 
-    # מגבילים ל-5 מניות
     results = results[:5]
 
     if not results:
         bot.send_message(chat_id=CHAT_ID, text="לא נמצאו מניות מתאימות היום.")
         return
 
-    # בונים הודעה מסודרת
+    # הודעה מסודרת כמו בדוגמה שלך
     message = "📊 *עדכון מניות יומי*\n\n"
     for r in results:
-        message += f"*{r['name']}* ({r['symbol']})\n"
-        message += f"תחום: {r['sector']}\n"
-        message += f"מחיר: ${r['price']:.2f}\n"
-        message += f"סיבה: {', '.join(r['reasons'])}\n"
+        message += f"**{r['name']} ({r['symbol']})** — {r['sector']}\n"
+        message += f"מחיר נוכחי: ${r['price']:.2f}\n"
         message += f"כיוון: {r['direction']}\n"
-        message += f"אחוז רווח פוטנציאלי: {r['potential']}%\n"
-        message += f"{r['summary']}...\n\n"
+        message += f"סיבה: {', '.join(r['reasons'])}\n"
+        message += f"כניסה: ${r['entry']} (הדרגתי)\n"
+        message += f"סטופ: ${r['stop']}\n"
+        message += f"יעדים: TP1 ${r['tp1']} (+15%) | TP2 ${r['tp2']} (+30%)\n"
+        message += f"הערכת סיכוי: ~{r['potential']}%\n\n"
 
-    # שליחת ההודעה
+    message += "*הערה*: לא ייעוץ השקעות. לשיקולך בלבד."
+
     bot.send_message(chat_id=CHAT_ID, text=message, parse_mode="Markdown")
 
-    # שליחת גרפים לכל מניה
+    # שולח גרפים לכל מניה
     for r in results:
         chart_path = generate_chart(r['symbol'])
-        caption = f"{r['symbol']} – גרף יומי"
-        bot.send_photo(chat_id=CHAT_ID, photo=open(chart_path, 'rb'), caption=caption)
+        bot.send_photo(chat_id=CHAT_ID, photo=open(chart_path, 'rb'), caption=f"{r['symbol']} – גרף יומי")
 
 send_stocks()
