@@ -1,0 +1,35 @@
+name: Universal Bot Runner
+
+on:
+  workflow_dispatch:
+    inputs:
+      script:
+        description: 'בחר איזה קובץ להריץ (למשל: stock_alert_bot.py / crypto_alert_bot.py / test_stocks_bot.py)'
+        required: true
+        default: 'stock_alert_bot.py'
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run selected bot/test
+        env:
+          TOKEN_STOCKS: ${{ secrets.TOKEN_STOCKS }}
+          TOKEN_CRYPTO: ${{ secrets.TOKEN_CRYPTO }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
+          LUNARCRUSH_API: ${{ secrets.LUNARCRUSH_API }}
+        run: python ${{ github.event.inputs.script }}
